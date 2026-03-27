@@ -24,17 +24,17 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isDashboardRoute = location.pathname.startsWith('/dashboard');
-  
+
   // No header/footer for admin and dashboard routes (they have their own layout)
   if (isAdminRoute || isDashboardRoute) {
     return <>{children}</>;
   }
-  
+
   const hideFooterRoutes = ['/', '/cars', '/subscription', '/offers', '/login', '/register'];
-  const showFooter = !hideFooterRoutes.some(route => 
+  const showFooter = !hideFooterRoutes.some(route =>
     location.pathname === route || (route !== '/' && location.pathname.startsWith(`${route}/`))
   );
-  
+
   return (
     <div className="flex flex-col min-h-screen">
       <Header />

@@ -457,6 +457,98 @@ public class NotificationService {
             // We catch Throwable to prevent NoClassDefFoundError from crashing the app if Twilio isn't loaded
         }
     }
+    /**
+     * Send offer/promo code notification to one customer or all customers.
+     * @param offer - the PromoCode entity
+     * @param targetEmail - null means ALL customers; non-null means specific email
+     */
+    public void sendOfferNotification(com.carrental.entity.PromoCode offer, String targetEmail) {
+        String subject = "🎉 Exclusive Offer Just for You! " + offer.getDiscountPercentage() + "% OFF | MotoGlide";
+
+        String htmlBody = "<!DOCTYPE html><html><head><meta charset='UTF-8'></head>"
+            + "<body style='margin:0;padding:0;background:#0f1629;font-family:Arial,sans-serif;'>"
+            + "<div style='max-width:600px;margin:30px auto;background:#1a1c2e;border-radius:16px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.5);border:1px solid rgba(212,165,116,0.3);'>"
+            // Header
+            + "<div style='background:linear-gradient(135deg,#d4a574,#b8860b);padding:40px 30px;text-align:center;'>"
+            + "<h1 style='color:#1a1c2e;margin:0;font-size:28px;font-weight:900;letter-spacing:1px;'>🎁 SPECIAL OFFER FOR YOU!</h1>"
+            + "<p style='color:rgba(26,28,46,0.8);margin:10px 0 0;font-size:15px;font-weight:bold;'>MotoGlide Premium Car Rental</p>"
+            + "</div>"
+            // Promo Code Box
+            + "<div style='padding:35px 30px;text-align:center;'>"
+            + "<p style='color:#d4a574;font-size:16px;font-weight:bold;margin:0 0 20px;'>Use code below and save on your next ride:</p>"
+            + "<div style='background:rgba(212,165,116,0.1);border:2px dashed #d4a574;border-radius:16px;padding:25px;margin:0 auto 25px;max-width:300px;'>"
+            + "<p style='color:#888;font-size:12px;font-weight:bold;margin:0 0 8px;text-transform:uppercase;letter-spacing:3px;'>Promo Code</p>"
+            + "<p style='color:#d4a574;font-size:36px;font-weight:900;margin:0;letter-spacing:6px;font-family:monospace;'>" + offer.getCode() + "</p>"
+            + "</div>"
+            // Offer Details Table
+            + "<div style='background:rgba(255,255,255,0.03);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);margin-bottom:25px;'>"
+            + "<table style='width:100%;border-collapse:collapse;font-size:14px;'>"
+            + "<tr>"
+            + "<td style='padding:14px 20px;color:#888;border-bottom:1px solid rgba(255,255,255,0.05);'>Discount</td>"
+            + "<td style='padding:14px 20px;font-weight:900;color:#22c55e;font-size:22px;border-bottom:1px solid rgba(255,255,255,0.05);'>" + offer.getDiscountPercentage() + "% OFF</td>"
+            + "</tr>"
+            + (offer.getMaxDiscountAmount() != null ? "<tr><td style='padding:14px 20px;color:#888;border-bottom:1px solid rgba(255,255,255,0.05);'>Max Savings</td><td style='padding:14px 20px;font-weight:800;color:#d4a574;border-bottom:1px solid rgba(255,255,255,0.05);'>Up to ₹" + offer.getMaxDiscountAmount() + "</td></tr>" : "")
+            + (offer.getValidUntil() != null ? "<tr><td style='padding:14px 20px;color:#888;'>Valid Until</td><td style='padding:14px 20px;font-weight:800;color:#f87171;'>" + offer.getValidUntil().toLocalDate() + "</td></tr>" : "")
+            + "</table></div>"
+            + (offer.getDescription() != null && !offer.getDescription().isEmpty() ? "<p style='color:#aaa;font-size:13px;margin:0 0 25px;font-style:italic;'>\"" + offer.getDescription() + "\"</p>" : "")
+            // CTA Button
+            + "<a href='https://motoglide.app/cars' style='display:inline-block;background:linear-gradient(135deg,#d4a574,#b8860b);color:#1a1c2e;padding:16px 40px;border-radius:50px;font-weight:900;font-size:16px;text-decoration:none;letter-spacing:1px;box-shadow:0 8px 20px rgba(212,165,116,0.3);'>🚗 BOOK NOW &amp; SAVE</a>"
+            + "<p style='color:#555;font-size:12px;margin:25px 0 0;'>Offer valid for limited time only. T&amp;C apply.</p>"
+            + "</div>"
+            // Footer
+            + "<div style='padding:20px 30px;text-align:center;background:rgba(0,0,0,0.2);border-top:1px solid rgba(255,255,255,0.05);'>"
+            + "<p style='color:#d4a574;font-weight:bold;margin:0 0 5px;'>MotoGlide Premium Car Rental</p>"
+            + "<p style='color:#555;font-size:11px;margin:0;'>To unsubscribe from promotional emails, contact support@motoglide.com</p>"
+            + "</div></div></body></html>";
+
+        String whatsappMsg = "🎉 *EXCLUSIVE OFFER FROM MOTOGLIDE!*\n\n"
+            + "Use code: *" + offer.getCode() + "*\n"
+            + "Get *" + offer.getDiscountPercentage() + "% OFF* on your next car rental!\n"
+            + (offer.getMaxDiscountAmount() != null ? "Max savings: ₹" + offer.getMaxDiscountAmount() + "\n" : "")
+            + (offer.getValidUntil() != null ? "Valid until: " + offer.getValidUntil().toLocalDate() + "\n" : "")
+            + "\n" + (offer.getDescription() != null ? offer.getDescription() + "\n\n" : "")
+            + "Book at: motoglide.app/cars 🚗";
+
+        if (targetEmail != null && !targetEmail.isBlank()) {
+            // Send to specific customer
+            userRepository.findAll().stream()
+                .filter(u -> u.getEmail().equalsIgnoreCase(targetEmail.trim()) && u.isActive()
+                    && u.getRole() == com.carrental.entity.User.UserRole.CUSTOMER)
+                .findFirst()
+                .ifPresent(user -> {
+                    sendHtmlEmail(user.getEmail(), subject, htmlBody);
+                    if (user.getPhoneNumber() != null) {
+                        sendWhatsAppMessage(user.getPhoneNumber(), whatsappMsg);
+                    }
+                });
+        } else {
+            // Broadcast to ALL active customers
+            userRepository.findAll().stream()
+                .filter(u -> u.isActive() && u.getRole() == com.carrental.entity.User.UserRole.CUSTOMER)
+                .forEach(user -> {
+                    sendHtmlEmail(user.getEmail(), subject, htmlBody);
+                    if (user.getPhoneNumber() != null) {
+                        sendWhatsAppMessage(user.getPhoneNumber(), whatsappMsg);
+                    }
+                });
+        }
+    }
+
+    private void sendHtmlEmail(String to, String subject, String htmlBody) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(htmlBody, true);
+            mailSender.send(message);
+        } catch (Throwable e) {
+            System.err.println("Error sending HTML email to " + to + ": " + e.getMessage());
+            sendEmail(to, subject, "You have a new offer from MotoGlide! Use code: " + subject);
+        }
+    }
+
     public void sendFinancialReport(String toEmail, byte[] pdfData) {
         try {
             MimeMessage message = mailSender.createMimeMessage();

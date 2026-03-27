@@ -20,6 +20,9 @@ public class PaymentController {
     private final PaymentService paymentService;
     private final PaymentRepository paymentRepository;
 
+    @org.springframework.beans.factory.annotation.Value("${razorpay.key.id}")
+    private String razorpayKeyId;
+
     /**
      * Unified payment processing endpoint.
      * Finalizes payment, updates booking status, generates invoice,
@@ -109,6 +112,39 @@ public class PaymentController {
             return ResponseEntity.ok(paymentService.verifyPayment(id));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    // --- Razorpay Specific Endpoints ---
+
+    @GetMapping("/razorpay-key")
+    public ResponseEntity<?> getRazorpayKey() {
+        return ResponseEntity.ok(Map.of("keyId", razorpayKeyId));
+    }
+
+    @PostMapping("/create-order")
+    public ResponseEntity<?> createOrder(@RequestBody Map<String, Object> data) {
+        try {
+            Double amount = Double.valueOf(data.get("amount").toString());
+            String bookingNumber = data.get("bookingNumber").toString();
+            String orderId = paymentService.createRazorpayOrder(amount, bookingNumber);
+            return ResponseEntity.ok(Map.of("orderId", orderId, "amount", amount, "currency", "INR"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Error creating Razorpay order: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/verify-signature")
+    public ResponseEntity<?> verifySignature(@RequestBody Map<String, String> data) {
+        String orderId = data.get("orderId");
+        String paymentId = data.get("paymentId");
+        String signature = data.get("signature");
+        
+        boolean isValid = paymentService.verifySignature(orderId, paymentId, signature);
+        if (isValid) {
+            return ResponseEntity.ok(Map.of("status", "SUCCESS", "message", "Payment verified successfully"));
+        } else {
+            return ResponseEntity.badRequest().body(Map.of("status", "FAILED", "message", "Invalid payment signature"));
         }
     }
 }

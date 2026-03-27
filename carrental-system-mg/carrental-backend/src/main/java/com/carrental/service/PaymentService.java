@@ -11,8 +11,16 @@ import com.carrental.entity.Vehicle;
 import com.carrental.repository.BookingRepository;
 import com.carrental.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
+import com.razorpay.Order;
+import com.razorpay.RazorpayClient;
+import com.razorpay.RazorpayException;
+import com.razorpay.Utils;
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.annotation.PostConstruct;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -30,6 +38,19 @@ public class PaymentService {
     private final BookingRepository bookingRepository;
     private final BillService billService;
     private final NotificationService notificationService;
+
+    @Value("${razorpay.key.id}")
+    private String razorpayKeyId;
+
+    @Value("${razorpay.key.secret}")
+    private String razorpayKeySecret;
+
+    private RazorpayClient razorpayClient;
+
+    @PostConstruct
+    public void init() throws RazorpayException {
+        this.razorpayClient = new RazorpayClient(razorpayKeyId, razorpayKeySecret);
+    }
 
     /**
      * Complete payment processing flow:
@@ -126,25 +147,60 @@ public class PaymentService {
         return response;
     }
 
-    public Payment processAdvancePayment(Long bookingId, PaymentDTO paymentDTO) {
+    public Map<String, Object> processAdvancePayment(Long bookingId, PaymentDTO paymentDTO) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
 
+        // 1. Create payment record
         Payment payment = new Payment();
         payment.setBooking(booking);
         payment.setAmount(booking.getAdvanceAmount());
         payment.setPaymentType(PaymentType.ADVANCE);
         payment.setPaymentMethod(Payment.PaymentMethod.valueOf(paymentDTO.getPaymentMethod()));
-        payment.setTransactionId(generateTransactionId());
+        // Use Razorpay Payment ID as our transaction ID if available
+        String txnId = paymentDTO.getTransactionId() != null && !paymentDTO.getTransactionId().isEmpty()
+                ? paymentDTO.getTransactionId() : generateTransactionId();
+        payment.setTransactionId(txnId);
         payment.setStatus(PaymentStatus.SUCCESS);
         payment.setPaymentDate(LocalDateTime.now());
 
         Payment savedPayment = paymentRepository.save(payment);
+
+        // 2. Update booking status to CONFIRMED
+        booking.setStatus(BookingStatus.CONFIRMED);
         booking.setAdvancePaid(true);
         booking.setAdvancePaidDate(LocalDateTime.now());
         bookingRepository.save(booking);
 
-        return savedPayment;
+        // 3. Generate invoice (Bill)
+        Bill bill = null;
+        try {
+            bill = billService.generateBill(bookingId);
+        } catch (Exception e) {
+            System.err.println("Error generating bill: " + e.getMessage());
+        }
+
+        // 4. Send email confirmation with invoice PDF
+        try {
+            notificationService.sendPaymentConfirmationWithInvoice(booking, savedPayment, bill);
+        } catch (Exception e) {
+            System.err.println("Error sending payment confirmation email: " + e.getMessage());
+        }
+
+        // 5. Build response
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Payment processed successfully");
+        response.put("transactionId", savedPayment.getTransactionId());
+        response.put("amount", savedPayment.getAmount());
+        response.put("status", "SUCCESS");
+        response.put("bookingNumber", booking.getBookingNumber());
+        response.put("bookingStatus", "CONFIRMED");
+        if (bill != null) {
+            response.put("billNumber", bill.getBillNumber());
+            response.put("invoiceGenerated", true);
+        }
+        response.put("emailSent", true);
+        return response;
     }
 
     public Payment processRentalPayment(Long bookingId, PaymentDTO paymentDTO) {
@@ -208,6 +264,31 @@ public class PaymentService {
         response.put("transactionId", payment.getTransactionId());
         response.put("amount", payment.getAmount());
         return response;
+    }
+
+    // --- Razorpay Specific Logic ---
+
+    public String createRazorpayOrder(Double amount, String bookingNumber) throws RazorpayException {
+        JSONObject orderRequest = new JSONObject();
+        orderRequest.put("amount", (int)(amount * 100)); // Razorpay accepts amount in paise (x100)
+        orderRequest.put("currency", "INR");
+        orderRequest.put("receipt", bookingNumber);
+        
+        Order order = razorpayClient.orders.create(orderRequest);
+        return order.get("id");
+    }
+
+    public boolean verifySignature(String orderId, String paymentId, String signature) {
+        try {
+            JSONObject attributes = new JSONObject();
+            attributes.put("razorpay_order_id", orderId);
+            attributes.put("razorpay_payment_id", paymentId);
+            attributes.put("razorpay_signature", signature);
+
+            return Utils.verifyPaymentSignature(attributes, razorpayKeySecret);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private String generateTransactionId() {

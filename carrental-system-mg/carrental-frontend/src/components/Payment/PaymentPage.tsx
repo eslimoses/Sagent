@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { FiCreditCard, FiCheckCircle, FiArrowLeft, FiShield, FiFileText } from 'react-icons/fi';
 import { usePayments, useBookings, useAuth } from '../../hooks';
+import axios from 'axios';
 
 const PaymentPage: React.FC = () => {
   const { bookingId } = useParams<{ bookingId: string }>();
@@ -29,29 +30,107 @@ const PaymentPage: React.FC = () => {
   const { processFullPayment, processAdvancePayment } = usePayments();
   const processing = processFullPayment.isLoading || processAdvancePayment.isLoading;
 
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
   const handlePayment = async () => {
     if (!booking) return;
 
-    if (paymentMethod === 'CREDIT_CARD' || paymentMethod === 'DEBIT_CARD') {
-      if (!cardNumber || !expiryDate || !cvv) { setError('Please fill all card details'); return; }
-    } else if (paymentMethod === 'UPI' && !upiId) {
-      setError('Please enter your UPI ID'); return;
-    }
-
-    const txnId = 'TXN-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-    
     setError('');
     
-    
+    // Check if we should use Razorpay (only for Credit/Debit Card)
+    const isCard = paymentMethod === 'CREDIT_CARD' || paymentMethod === 'DEBIT_CARD';
+
+    if (isCard) {
+      // 1. Load Razorpay script
+      const res = await loadRazorpayScript();
+      if (!res) {
+        setError('Razorpay SDK failed to load. Are you online?');
+        return;
+      }
+
+      try {
+        // 2. Create Order in Backend & Fetch Key
+        const amount = booking.advanceAmount || booking.totalAmount / 3;
+        const [orderResponse, keyResponse] = await Promise.all([
+          axios.post('http://localhost:8080/api/payments/create-order', {
+            amount: amount,
+            bookingNumber: booking.bookingNumber || `BK-${booking.id}`
+          }),
+          axios.get('http://localhost:8080/api/payments/razorpay-key')
+        ]);
+
+        const { orderId } = orderResponse.data;
+        const razorpayKey = keyResponse.data.keyId;
+
+        // 3. Open Razorpay Checkout
+        const options = {
+          key: razorpayKey,
+          amount: amount * 100,
+          currency: 'INR',
+          name: 'MotoGlide Car Rental',
+          description: `Advance Payment for Booking #${booking.bookingNumber}`,
+          order_id: orderId,
+          handler: async (response: any) => {
+            // 4. Verify Payment in Backend
+            try {
+              const verifyRes = await axios.post('http://localhost:8080/api/payments/verify-signature', {
+                orderId: response.razorpay_order_id,
+                paymentId: response.razorpay_payment_id,
+                signature: response.razorpay_signature
+              });
+
+              if (verifyRes.data.status === 'SUCCESS') {
+                finalizeBooking('RAZORPAY', response.razorpay_payment_id);
+              } else {
+                setError('Payment signature verification failed. Please contact support.');
+              }
+            } catch (err) {
+              setError('Payment verification failed. Please contact support with payment ID: ' + response.razorpay_payment_id);
+            }
+          },
+          prefill: {
+            name: `${user?.firstName} ${user?.lastName}`,
+            email: user?.email,
+            contact: user?.phoneNumber
+          },
+          theme: { color: '#2563EB' }
+        };
+
+        const razorpay = new (window as any).Razorpay(options);
+        razorpay.open();
+      } catch (err: any) {
+        setError('Error initiating payment: ' + (err.response?.data?.message || err.message));
+      }
+    } else {
+      // Direct Payment for UPI or Cash
+      finalizeBooking(paymentMethod);
+    }
+  };
+
+  const finalizeBooking = (method: string, txnId?: string) => {
     processAdvancePayment.mutate(
-      { bookingId: booking.id, paymentMethod: paymentMethod },
+      { 
+        bookingId: booking.id, 
+        paymentMethod: method,
+        transactionId: txnId
+      },
       {
-        onSuccess: (data) => {
-          setTransactionId(data.transactionId || txnId);
+        onSuccess: (data: any) => {
+          setTransactionId(data.transactionId || txnId || 'DIRECT-PAY');
           setSuccess(true);
+          // The dashboards will automatically reflect this because processAdvancePayment 
+          // triggers the Backend to update booking status to 'CONFIRMED'.
         },
         onError: (err: any) => {
-          setError(err.response?.data?.message || err.response?.data || 'Payment failed. Please try again.');
+          setError('Booking update failed. Please contact support.');
         }
       }
     );

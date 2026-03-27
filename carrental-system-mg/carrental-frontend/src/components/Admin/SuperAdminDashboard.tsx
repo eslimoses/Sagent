@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiUsers, FiTruck, FiCalendar, FiMapPin, FiPlus, FiEdit, FiTrash2, FiX, FiBarChart, FiDollarSign, FiTag, FiActivity, FiLogOut, FiFileText, FiEye, FiMail, FiDownload, FiAlertCircle } from 'react-icons/fi';
+import { FiUsers, FiTruck, FiCalendar, FiMapPin, FiPlus, FiEdit, FiTrash2, FiX, FiBarChart, FiDollarSign, FiTag, FiActivity, FiLogOut, FiFileText, FiEye, FiMail, FiDownload, FiAlertCircle, FiBell, FiSend } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { useAdminStats, useAdminVehicles, useAdminBookings, useAdminUsers, useAdminActions, useVehicleManagement, useCityManagement, useCities, useCategories, useAdminOffers, useOfferManagement, useCustomerActivities, useCategoryManagement, useAuth, useAdminPayments } from '../../hooks';
 
@@ -13,6 +13,12 @@ const SuperAdminDashboard: React.FC = () => {
   const [showUserViewModal, setShowUserViewModal] = useState(false);
   const [selectedVehicleForMaintenance, setSelectedVehicleForMaintenance] = useState<any>(null);
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  // Offer notification state
+  const [showNotifyModal, setShowNotifyModal] = useState(false);
+  const [notifyOffer, setNotifyOffer] = useState<any>(null);
+  const [notifyTarget, setNotifyTarget] = useState<'all' | 'specific'>('all');
+  const [notifyEmail, setNotifyEmail] = useState('');
+  const [notifySending, setNotifySending] = useState(false);
   const navigate = useNavigate();
 
   const { logout } = useAuth();
@@ -512,8 +518,8 @@ const SuperAdminDashboard: React.FC = () => {
               {offers.map((o: any) => (
                 <div key={o.id} className="bg-[#111420] border border-[#1e2336] p-6 rounded-2xl relative overflow-hidden group hover:border-blue-500/30 transition-all duration-300">
                   <div className="absolute top-0 right-0 p-2 opacity-70 group-hover:opacity-100 transition flex gap-1 z-10">
-                     <button onClick={() => { setFormData({...o}); setModal({ type: 'editOffer', data: o }); }} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg bg-[#1a1c2e]/50 backdrop-blur-sm"><FiEdit /></button>
-                     <button onClick={() => { if(window.confirm('Delete offer?')) deleteOffer.mutate(o.id); }} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg bg-[#1a1c2e]/50 backdrop-blur-sm"><FiTrash2 /></button>
+                     <button onClick={() => { setFormData({...o}); setModal({ type: 'editOffer', data: o }); }} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg bg-[#1a1c2e]/50 backdrop-blur-sm" title="Edit Offer"><FiEdit /></button>
+                     <button onClick={() => { if(window.confirm('Delete offer?')) deleteOffer.mutate(o.id); }} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg bg-[#1a1c2e]/50 backdrop-blur-sm" title="Delete Offer"><FiTrash2 /></button>
                   </div>
                   <div className="flex items-center gap-4 mb-4">
                      {o.imageUrl ? <img src={o.imageUrl} alt={o.code} className="w-12 h-12 object-cover rounded-xl" /> : <div className="bg-blue-500/10 p-3 rounded-xl text-blue-500 font-bold text-xl"><FiTag /></div>}
@@ -528,6 +534,18 @@ const SuperAdminDashboard: React.FC = () => {
                        <p className="text-xs text-gray-500 font-bold tracking-widest uppercase mb-1">Max Discount: ₹{o.maxDiscountAmount}</p>
                        <span className="text-[10px] text-green-500 font-black border border-green-500/30 px-2 py-0.5 rounded uppercase tracking-tighter">{o.category || 'ALL'}</span>
                     </div>
+                    {/* Send Notification Button */}
+                    <button
+                      onClick={() => {
+                        setNotifyOffer(o);
+                        setNotifyTarget('all');
+                        setNotifyEmail('');
+                        setShowNotifyModal(true);
+                      }}
+                      className="w-full mt-3 flex items-center justify-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:border-amber-500 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all duration-300"
+                    >
+                      <FiBell size={14} /> Send Offer Notification
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1264,6 +1282,129 @@ const SuperAdminDashboard: React.FC = () => {
                    </p>
                 </div>
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* Offer Notification Modal */}
+      {showNotifyModal && notifyOffer && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+          <div className="bg-[#111420] rounded-3xl max-w-lg w-full shadow-2xl border border-[#1e2336]">
+            <div className="p-8">
+              {/* Header */}
+              <div className="flex justify-between items-center mb-6 pb-6 border-b border-[#1e2336]">
+                <div className="flex items-center gap-4">
+                  <div className="bg-amber-500/10 p-3 rounded-2xl">
+                    <FiBell size={22} className="text-amber-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white uppercase italic">Send Offer Notification</h2>
+                    <p className="text-gray-500 text-xs font-bold tracking-widest uppercase mt-0.5">
+                      Code: <span className="text-amber-400">{notifyOffer.code}</span> — {notifyOffer.discountPercentage}% OFF
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowNotifyModal(false)} className="bg-gray-800 text-white p-2 rounded-xl hover:bg-gray-700 transition">
+                  <FiX size={18} />
+                </button>
+              </div>
+
+              {/* Target Selection */}
+              <div className="mb-6">
+                <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Send To</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setNotifyTarget('all')}
+                    className={`py-3 px-4 rounded-xl font-black text-xs uppercase tracking-widest border transition-all ${
+                      notifyTarget === 'all'
+                        ? 'bg-blue-600/20 text-blue-400 border-blue-500/50'
+                        : 'bg-white/5 text-gray-500 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    👥 All Customers
+                  </button>
+                  <button
+                    onClick={() => setNotifyTarget('specific')}
+                    className={`py-3 px-4 rounded-xl font-black text-xs uppercase tracking-widest border transition-all ${
+                      notifyTarget === 'specific'
+                        ? 'bg-amber-600/20 text-amber-400 border-amber-500/50'
+                        : 'bg-white/5 text-gray-500 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    👤 Specific Customer
+                  </button>
+                </div>
+              </div>
+
+              {/* Specific Email Input */}
+              {notifyTarget === 'specific' && (
+                <div className="mb-6">
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">Customer Email</label>
+                  <input
+                    type="email"
+                    value={notifyEmail}
+                    onChange={e => setNotifyEmail(e.target.value)}
+                    placeholder="customer@example.com"
+                    className="w-full bg-[#161a29] text-white px-4 py-3 rounded-xl border border-[#1e2336] focus:border-amber-500 outline-none font-medium"
+                  />
+                </div>
+              )}
+
+              {/* Info Box */}
+              <div className="bg-[#161a29] rounded-2xl p-4 border border-[#1e2336] mb-6">
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-2">
+                  📨 What will be sent:
+                </p>
+                <ul className="text-xs text-gray-500 space-y-1">
+                  <li>✉️ A beautiful HTML email with offer details</li>
+                  <li>📱 A WhatsApp message with the promo code</li>
+                  {notifyTarget === 'all'
+                    ? <li className="text-blue-400 font-bold">→ Sent to ALL active customers</li>
+                    : <li className="text-amber-400 font-bold">→ Sent only to: {notifyEmail || '...'}</li>
+                  }
+                </ul>
+              </div>
+
+              {/* Send Button */}
+              <button
+                disabled={notifySending || (notifyTarget === 'specific' && !notifyEmail)}
+                onClick={async () => {
+                  setNotifySending(true);
+                  try {
+                    const body = notifyTarget === 'specific' && notifyEmail
+                      ? JSON.stringify({ email: notifyEmail })
+                      : '{}';
+                    const res = await fetch(`${import.meta.env.VITE_API_URL}/promo-codes/${notifyOffer.id}/notify`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                      },
+                      body
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      alert(`✅ ${data.message}`);
+                      setShowNotifyModal(false);
+                    } else {
+                      alert(`❌ Failed: ${data.error || 'Unknown error'}`);
+                    }
+                  } catch (e) {
+                    alert('❌ Network error. Please try again.');
+                  } finally {
+                    setNotifySending(false);
+                  }
+                }}
+                className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-xl ${
+                  notifySending || (notifyTarget === 'specific' && !notifyEmail)
+                    ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-400 hover:to-orange-400 shadow-amber-500/20'
+                }`}
+              >
+                <FiBell size={16} />
+                {notifySending ? 'Sending...' : `Send ${notifyTarget === 'all' ? 'to All Customers' : 'to Customer'}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

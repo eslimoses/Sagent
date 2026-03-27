@@ -32,7 +32,7 @@ export const usePayments = (customerId?: number) => {
   );
 
   const processAdvancePayment = useMutation(
-    (paymentData: { bookingId: number; paymentMethod: string; payerDetails?: string }) =>
+    (paymentData: { bookingId: number; paymentMethod: string; transactionId?: string; payerDetails?: string }) =>
       paymentAPI.processAdvance(paymentData.bookingId, paymentData).then((res: any) => res.data),
     {
       onSuccess: (data) => {

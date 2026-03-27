@@ -23,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 public class AuthController {
     private final UserService userService;
     private final com.carrental.service.NotificationService notificationService;
+    private final com.carrental.service.JwtService jwtService;
     
     // In-memory OTP storage (phone -> {otp, timestamp})
     private static final Map<String, Map<String, Object>> otpStorage = new ConcurrentHashMap<>();
@@ -43,7 +44,7 @@ public class AuthController {
                     .city(user.getCity())
                     .address(user.getAddress())
                     .active(user.isActive())
-                    .token("dummy-jwt-token-" + user.getId())
+                    .token(jwtService.generateToken(user))
                     .message("Registration successful")
                     .build();
             return ResponseEntity.ok(response);
@@ -68,7 +69,7 @@ public class AuthController {
                     .city(user.getCity())
                     .address(user.getAddress())
                     .active(user.isActive())
-                    .token("dummy-jwt-token-" + user.getId())
+                    .token(jwtService.generateToken(user))
                     .message("Admin registration successful")
                     .build();
             return ResponseEntity.ok(response);
@@ -118,7 +119,7 @@ public class AuthController {
                     .profilePhoto(user.getProfilePhoto())
                     .licensePhotoFront(user.getLicensePhotoFront())
                     .licensePhotoBack(user.getLicensePhotoBack())
-                    .token("dummy-jwt-token-" + user.getId()) // Simple token for now
+                    .token(jwtService.generateToken(user)) // Real JWT token
                     .message("Login successful")
                     .build();
             
@@ -214,9 +215,16 @@ public class AuthController {
             // OTP verified successfully
             otpStorage.remove(phoneNumber);
             
-            Map<String, String> response = new HashMap<>();
+            Map<String, Object> response = new HashMap<>();
             response.put("message", "OTP verified successfully");
-            response.put("token", "dummy-jwt-token-" + System.currentTimeMillis());
+            
+            // Try to find user to generate a real token
+            User user = userService.getUserByEmail(email);
+            if (user != null) {
+                response.put("token", jwtService.generateToken(user));
+            } else {
+                response.put("token", "verification-success-token-" + System.currentTimeMillis());
+            }
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             Map<String, String> error = new HashMap<>();

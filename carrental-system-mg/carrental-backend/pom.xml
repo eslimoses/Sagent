@@ -96,6 +96,12 @@
 			<artifactId>commons-io</artifactId>
 			<version>2.11.0</version>
 		</dependency>
+		<!-- Razorpay Payment Gateway -->
+		<dependency>
+			<groupId>com.razorpay</groupId>
+			<artifactId>razorpay-java</artifactId>
+			<version>1.4.3</version>
+		</dependency>
 		<!-- OpenPDF for generating Invoice PDF -->
 		<dependency>
 			<groupId>com.github.librepdf</groupId>

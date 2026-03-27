@@ -2,6 +2,7 @@ package com.carrental.controller;
 
 import com.carrental.entity.PromoCode;
 import com.carrental.repository.PromoCodeRepository;
+import com.carrental.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +20,8 @@ import java.util.Map;
 public class PromoCodeController {
     private final PromoCodeRepository promoCodeRepository;
     private final com.carrental.repository.BookingRepository bookingRepository;
+    private final NotificationService notificationService;
+
 
     @PostMapping("/validate")
     public ResponseEntity<?> validatePromoCode(@RequestBody Map<String, Object> request) {
@@ -134,5 +137,32 @@ public class PromoCodeController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of("error", "Failed to delete promo code: " + e.getMessage()));
         }
+    }
+
+    /**
+     * Send offer notification via email + WhatsApp.
+     * POST /api/promo-codes/{id}/notify
+     * Body (optional): { "email": "customer@example.com" }
+     * If email is omitted or null, sends to ALL active customers.
+     */
+    @PostMapping("/{id}/notify")
+    public ResponseEntity<?> sendOfferNotification(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> request) {
+        return promoCodeRepository.findById(id)
+                .map(offer -> {
+                    try {
+                        String targetEmail = request != null ? request.get("email") : null;
+                        notificationService.sendOfferNotification(offer, targetEmail);
+                        String msg = (targetEmail != null && !targetEmail.isBlank())
+                                ? "Offer notification sent to " + targetEmail
+                                : "Offer notification broadcast to all customers";
+                        return ResponseEntity.ok(Map.of("message", msg));
+                    } catch (Exception e) {
+                        return ResponseEntity.internalServerError()
+                                .body(Map.of("error", "Failed to send offer notifications: " + e.getMessage()));
+                    }
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 }
